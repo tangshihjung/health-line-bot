@@ -120,7 +120,7 @@ def get_diet_plan(bmi):
         plan += "🌙 晚:蒸魚+燙青菜3碗(不吃澱粉)\n"
         plan += "\n⚠️ 請諮詢醫師或營養師\n"
     
-    plan += "\n💬 輸入「選單」返回"
+    plan += "\n💬 輸入「返回」回到選單"
     return plan
 
 def get_exercise_detail(exercise_type):
@@ -167,7 +167,7 @@ def get_exercise_detail(exercise_type):
         detail += "• 強度:輕鬆不費力\n\n"
         detail += "⚠️ 不適立即停止,頭暈胸悶請就醫"
     
-    detail += "\n\n💬 輸入「選單」返回"
+    detail += "\n\n💬 輸入「返回」回到選單"
     return detail
 
 def show_main_menu():
@@ -188,7 +188,8 @@ def show_exercise_menu(user_data=None):
         menu += f"🎯 AI推薦: {rec['reason']}\n\n"
     menu += "請選擇運動類型:\n"
     menu += "1️⃣ 上肢訓練\n2️⃣ 下肢訓練\n3️⃣ 長者居家運動\n\n"
-    menu += "請輸入數字 1-3"
+    menu += "請輸入數字 1-3\n\n"
+    menu += "💬 輸入「返回」回到選單"
     return menu
 
 @app.route("/webhook", methods=['POST'])
@@ -211,8 +212,8 @@ def handle_message(event):
     
     state = user_states[user_id]
     
-    # 選單指令
-    if user_message in ['選單', '功能', 'menu', '開始', 'start']:
+    # 選單指令(新增返回功能)
+    if user_message in ['選單', '功能', 'menu', '開始', 'start', '返回', 'back', '重新選擇']:
         user_states[user_id] = {'mode': 'menu'}
         reply = show_main_menu()
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
@@ -222,7 +223,7 @@ def handle_message(event):
     if state['mode'] == 'menu':
         if user_message == '1':
             user_states[user_id] = {'mode': 'health', 'step': 1}
-            reply = "📊 健康檢測\n\n請輸入你的身高(公尺)\n例如: 1.70"
+            reply = "📊 健康檢測\n\n請輸入你的身高(公分)\n例如: 170\n\n💬 輸入「返回」可重新選擇"
         elif user_message == '2':
             reply = show_exercise_menu(state.get('health_data'))
             user_states[user_id]['mode'] = 'exercise'
@@ -230,7 +231,7 @@ def handle_message(event):
             if 'health_data' in state and 'bmi' in state['health_data']:
                 reply = get_diet_plan(state['health_data']['bmi'])
             else:
-                reply = "💡 建議先完成「健康檢測」\n可獲得個人化飲食建議\n\n或輸入你的 BMI 值查看通用建議"
+                reply = "💡 建議先完成「健康檢測」\n可獲得個人化飲食建議\n\n輸入「1」開始檢測\n或輸入「返回」重新選擇"
         else:
             reply = show_main_menu()
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
@@ -240,37 +241,38 @@ def handle_message(event):
     if state['mode'] == 'health':
         if state.get('step') == 1:
             try:
-                height = float(user_message)
-                if 1.0 <= height <= 2.5:
-                    state['height'] = height
+                height_cm = float(user_message)
+                if 100 <= height_cm <= 250:
+                    state['height'] = height_cm / 100  # 轉換成公尺儲存
+                    state['height_cm'] = height_cm  # 也保存公分值用於顯示
                     state['step'] = 2
-                    reply = f"✅ 身高: {height}m\n\n請輸入體重(公斤)\n例如: 70"
+                    reply = f"✅ 身高: {height_cm:.0f}cm\n\n請輸入體重(公斤)\n例如: 70\n\n💬 輸入「返回」可重新選擇"
                 else:
-                    reply = "⚠️ 請輸入1.0-2.5之間的數字"
+                    reply = "⚠️ 請輸入100-250之間的數字\n\n💬 輸入「返回」可重新選擇"
             except:
-                reply = "⚠️ 請輸入有效數字"
+                reply = "⚠️ 請輸入有效數字\n\n💬 輸入「返回」可重新選擇"
         elif state.get('step') == 2:
             try:
                 weight = float(user_message)
                 if 30 <= weight <= 300:
                     state['weight'] = weight
                     state['step'] = 3
-                    reply = f"✅ 體重: {weight}kg\n\n請輸入年齡(歲)\n例如: 30"
+                    reply = f"✅ 體重: {weight}kg\n\n請輸入年齡(歲)\n例如: 30\n\n💬 輸入「返回」可重新選擇"
                 else:
-                    reply = "⚠️ 請輸入30-300之間的數字"
+                    reply = "⚠️ 請輸入30-300之間的數字\n\n💬 輸入「返回」可重新選擇"
             except:
-                reply = "⚠️ 請輸入有效數字"
+                reply = "⚠️ 請輸入有效數字\n\n💬 輸入「返回」可重新選擇"
         elif state.get('step') == 3:
             try:
                 age = int(user_message)
                 if 10 <= age <= 120:
                     state['age'] = age
                     state['step'] = 4
-                    reply = f"✅ 年齡: {age}歲\n\n請輸入性別\n請輸入: 男 或 女"
+                    reply = f"✅ 年齡: {age}歲\n\n請輸入性別\n請輸入: 男 或 女\n\n💬 輸入「返回」可重新選擇"
                 else:
-                    reply = "⚠️ 請輸入10-120之間的數字"
+                    reply = "⚠️ 請輸入10-120之間的數字\n\n💬 輸入「返回」可重新選擇"
             except:
-                reply = "⚠️ 請輸入有效數字"
+                reply = "⚠️ 請輸入有效數字\n\n💬 輸入「返回」可重新選擇"
         elif state.get('step') == 4:
             if user_message in ['男', '女']:
                 bmi = calculate_bmi(state['height'], state['weight'])
@@ -284,7 +286,7 @@ def handle_message(event):
                 
                 category = get_bmi_category(bmi)
                 reply = f"📊 健康分析結果\n\n"
-                reply += f"身高: {state['height']}m\n"
+                reply += f"身高: {state['height_cm']:.0f}cm\n"
                 reply += f"體重: {state['weight']}kg\n"
                 reply += f"BMI: {bmi} ({category})\n"
                 reply += f"基礎代謝率: {bmr}大卡/天\n\n"
@@ -295,7 +297,7 @@ def handle_message(event):
                 
                 user_states[user_id]['mode'] = 'menu'
             else:
-                reply = "⚠️ 請輸入: 男 或 女"
+                reply = "⚠️ 請輸入: 男 或 女\n\n💬 輸入「返回」可重新選擇"
         else:
             reply = show_main_menu()
         
