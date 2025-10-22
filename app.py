@@ -224,7 +224,11 @@ def handle_message(event):
     # 主選單處理
     if state['mode'] == 'menu':
         if user_message == '1':
+            # ✅ 保留舊的 health_data (如果存在),但開始新的檢測
+            old_data = user_states.get(user_id, {}).get('health_data')
             user_states[user_id] = {'mode': 'health', 'step': 1}
+            if old_data:
+                user_states[user_id]['health_data'] = old_data
             reply = "📊 健康檢測\n\n請輸入你的身高(公分)\n例如: 170\n\n💬 輸入「返回」可重新選擇"
         elif user_message == '2':
             reply = show_exercise_menu(state.get('health_data'))
@@ -277,6 +281,12 @@ def handle_message(event):
                 reply = "⚠️ 請輸入有效數字\n\n💬 輸入「返回」可重新選擇"
         elif state.get('step') == 4:
             if user_message in ['男', '女']:
+                # ✅ 檢查所有必要數據是否存在
+                if 'height' not in state or 'weight' not in state or 'age' not in state or 'height_cm' not in state:
+                    reply = "❌ 資料不完整,請重新開始\n\n💬 輸入「返回」回到選單"
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+                    return
+                
                 # ✅ 先保存性別到 state
                 state['gender'] = user_message
                 
