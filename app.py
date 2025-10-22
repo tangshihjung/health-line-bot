@@ -6,200 +6,197 @@ import os
 
 app = Flask(__name__)
 
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET', 'YOUR_CHANNEL_SECRET')
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', 'YOUR_CHANNEL_ACCESS_TOKEN')
+# LINE Bot 設定
+line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
+handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
 
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
+# 儲存用戶狀態
 user_states = {}
 
-def calculate_bmi(height_m, weight_kg):
-    bmi = weight_kg / (height_m ** 2)
+# ==================== 健康計算函數 ====================
+def calculate_bmi(height, weight):
+    """計算 BMI"""
+    bmi = weight / (height ** 2)
     return round(bmi, 2)
 
 def get_bmi_category(bmi):
+    """BMI 分類"""
     if bmi < 18.5:
         return "體重過輕"
     elif 18.5 <= bmi < 24:
-        return "健康體位"
+        return "正常範圍"
     elif 24 <= bmi < 27:
-        return "體位過重"
+        return "體重過重"
     elif 27 <= bmi < 30:
         return "輕度肥胖"
+    elif 30 <= bmi < 35:
+        return "中度肥胖"
     else:
         return "重度肥胖"
 
-def calculate_bmr(weight_kg, height_cm, age, gender):
-    if gender == '男':
-        bmr = 88.362 + (13.397 * weight_kg) + (4.799 * height_cm) - (5.677 * age)
-    else:
-        bmr = 447.593 + (9.247 * weight_kg) + (3.098 * height_cm) - (4.330 * age)
+def calculate_bmr_male(weight, height, age):
+    """男性基礎代謝率 (Mifflin-St Jeor 公式)"""
+    bmr = (10 * weight) + (6.25 * height) - (5 * age) + 5
     return round(bmr, 1)
 
-def get_exercise_recommendation(bmi, age):
-    if age >= 60:
-        return {'recommend': 3, 'reason': '專為銀髮族設計，安全低衝擊'}
+def calculate_bmr_female(weight, height, age):
+    """女性基礎代謝率 (Mifflin-St Jeor 公式)"""
+    bmr = (10 * weight) + (6.25 * height) - (5 * age) - 161
+    return round(bmr, 1)
+
+# ==================== AI 運動推薦 ====================
+def recommend_exercise(bmi, age):
+    """根據 BMI 和年齡推薦運動"""
+    if age >= 65:
+        return {
+            'type': '長者居家運動',
+            'reason': '適合銀髮族的低衝擊運動'
+        }
     elif bmi < 18.5:
-        return {'recommend': '1+2', 'reason': '增肌為主，上下肢都要訓練'}
+        return {
+            'type': '上肢訓練',
+            'reason': '增加肌肉量,提升體重'
+        }
     elif bmi >= 27:
-        return {'recommend': 3, 'reason': '低衝擊運動保護關節'}
-    elif bmi >= 24:
-        return {'recommend': 2, 'reason': '大肌群訓練，減脂效果佳'}
+        return {
+            'type': '下肢訓練',
+            'reason': '大肌群運動,有效消耗熱量'
+        }
     else:
-        return {'recommend': '任選', 'reason': '體態正常，依喜好選擇'}
+        return {
+            'type': '上肢訓練',
+            'reason': '均衡訓練,維持健康'
+        }
 
-def get_diet_plan(bmi):
-    category = get_bmi_category(bmi)
-    plan = f"🍽️ 飲食計畫\n\n📊 BMI: {bmi} ({category})\n\n"
-    
-    if bmi < 18.5:
-        plan += "🎯 目標:健康增重\n\n"
-        plan += "【🏪 超商健康組合】($150)\n"
-        plan += "✅ 御飯糰 $35\n✅ 茶葉蛋2顆 $26\n"
-        plan += "✅ 全脂牛奶 $30\n✅ 堅果 $40\n✅ 香蕉 $15\n"
-        plan += "💰 $146 | 🔥 約600卡\n\n"
-        plan += "【🍜 外食建議】\n"
-        plan += "✅ 雞腿便當+荷包蛋\n✅ 自助餐2肉2菜\n"
-        plan += "✅ 牛肉麵+滷蛋\n⚠️ 避免:輕食沙拉\n\n"
-        plan += "【📅 一日三餐】\n"
-        plan += "🌅 早:全麥吐司2片+花生醬+蛋2顆+全脂奶\n"
-        plan += "🌞 午:雞腿便當+牛油果+堅果\n"
-        plan += "🌙 晚:鮭魚150g+地瓜+青菜+糙米飯\n"
-    elif 18.5 <= bmi < 24:
-        plan += "🎯 目標:維持健康\n\n"
-        plan += "【🏪 超商健康組合】($120)\n"
-        plan += "✅ 茶葉蛋2顆 $26\n✅ 地瓜 $35\n"
-        plan += "✅ 無糖豆漿 $25\n✅ 雞胸沙拉 $65\n"
-        plan += "💰 $151 | 🔥 約400卡\n\n"
-        plan += "【🍜 外食建議】\n"
-        plan += "✅ 雞胸便當+燙青菜\n✅ 自助餐1肉2菜\n"
-        plan += "✅ 陽春麵+燙青菜\n⚠️ 避免:炸物飲料\n\n"
-        plan += "【📅 一日三餐】\n"
-        plan += "🌅 早:燕麥粥+蛋+奇亞籽\n"
-        plan += "🌞 午:雞胸+糙米飯+青菜2碗\n"
-        plan += "🌙 晚:蒸魚+地瓜+大量蔬菜\n"
-    elif 24 <= bmi < 27:
-        plan += "🎯 目標:溫和減重\n\n"
-        plan += "【🏪 超商健康組合】($100)\n"
-        plan += "✅ 茶葉蛋2顆 $26\n✅ 雞胸沙拉 $65\n"
-        plan += "✅ 無糖綠茶 $25\n"
-        plan += "💰 $116 | 🔥 約300卡\n\n"
-        plan += "【🍜 外食建議】\n"
-        plan += "✅ 雞胸便當少飯油\n✅ 自助餐1肉3菜\n"
-        plan += "✅ 滷味:蔬菜+豆製品\n⚠️ 避免:炒飯炒麵\n\n"
-        plan += "【📅 一日三餐】\n"
-        plan += "🌅 早:全麥吐司+蛋+無糖豆漿\n"
-        plan += "🌞 午:雞胸+糙米飯半碗+大量蔬菜\n"
-        plan += "🌙 晚:蒸魚+燙青菜2碗(不吃澱粉)\n"
-    elif 27 <= bmi < 30:
-        plan += "🎯 目標:積極減重\n\n"
-        plan += "【🏪 超商健康組合】($90)\n"
-        plan += "✅ 茶葉蛋2顆 $26\n✅ 無糖豆漿 $25\n"
-        plan += "✅ 生菜沙拉 $45\n"
-        plan += "💰 $96 | 🔥 約250卡\n\n"
-        plan += "【🍜 外食建議】\n"
-        plan += "✅ 自助餐:大量青菜+瘦肉\n✅ 滷味:蔬菜為主\n"
-        plan += "✅ 火鍋:菜盤+海鮮\n⚠️ 避免:油炸糖飲\n\n"
-        plan += "【📅 一日三餐】\n"
-        plan += "🌅 早:燕麥粥40g+蛋+黑咖啡\n"
-        plan += "🌞 午:雞胸+糙米飯1/3碗+青菜2碗\n"
-        plan += "🌙 晚:蒸魚100g+燙青菜3碗(不吃澱粉)\n"
-    else:
-        plan += "🎯 目標:醫療級減重\n\n"
-        plan += "【🏪 超商健康組合】($80)\n"
-        plan += "✅ 水煮蛋2顆 $26\n✅ 無糖豆漿 $25\n"
-        plan += "✅ 小番茄 $35\n"
-        plan += "💰 $86 | 🔥 約200卡\n\n"
-        plan += "【🍜 外食建議】\n"
-        plan += "✅ 自助餐:蔬菜+水煮蛋白\n✅ 滷味:全選蔬菜\n"
-        plan += "✅ 涮涮鍋:蔬菜+海鮮\n⚠️ 避免:所有加工品\n\n"
-        plan += "【📅 一日三餐】\n"
-        plan += "🌅 早:水煮蛋2顆+無糖豆漿\n"
-        plan += "🌞 午:雞胸100g+大量蔬菜(不吃澱粉)\n"
-        plan += "🌙 晚:蒸魚+燙青菜3碗(不吃澱粉)\n"
-        plan += "\n⚠️ 請諮詢醫師或營養師\n"
-    
-    plan += "\n💬 輸入「返回」回到選單"
-    return plan
-
-def get_exercise_detail(exercise_type):
-    videos = {
-        '1': 'https://www.youtube.com/watch?v=IODxDxX7oi4',
-        '2': 'https://www.youtube.com/watch?v=aclHkVaku9U',
-        '3': 'https://www.youtube.com/watch?v=4BOTvaRaDjI'
-    }
-    
-    if exercise_type == '1':
-        detail = "💪 上肢訓練\n\n【訓練肌群】\n"
-        detail += "✅ 胸大肌:推的動作\n✅ 三角肌:肩膀穩定\n"
-        detail += "✅ 肱二頭肌:手臂彎曲\n✅ 肱三頭肌:手臂伸直\n\n"
-        detail += "【發力重點】\n"
-        detail += "• 胸部:向內擠壓\n• 肩膀:下壓避免聳肩\n"
-        detail += "• 核心:保持收緊\n\n"
-        detail += f"【教學影片】\n🎥 {videos['1']}\n\n"
-        detail += "【訓練建議】\n"
-        detail += "• 頻率:每週2-3次\n• 組數:每動作3組\n"
-        detail += "• 次數:每組10-15下\n• 休息:60秒\n\n"
-        detail += "⚠️ 保持呼吸,感受發力,不適立即停止"
-    elif exercise_type == '2':
-        detail = "💪 下肢訓練\n\n【訓練肌群】\n"
-        detail += "✅ 股四頭肌:大腿前側\n✅ 腿後肌群:大腿後側\n"
-        detail += "✅ 臀大肌:臀部主力\n✅ 小腿肌群:小腿\n\n"
-        detail += "【發力重點】\n"
-        detail += "• 臀部:往後坐\n• 膝蓋:不超過腳尖\n"
-        detail += "• 腰背:保持挺直\n\n"
-        detail += f"【教學影片】\n🎥 {videos['2']}\n\n"
-        detail += "【訓練建議】\n"
-        detail += "• 頻率:每週2-3次\n• 組數:每動作3-4組\n"
-        detail += "• 次數:每組12-20下\n• 休息:90秒\n\n"
-        detail += "⚠️ 膝蓋與腳尖同向,腰背挺直"
-    else:
-        detail = "💪 長者居家運動\n\n【訓練重點】\n"
-        detail += "✅ 肌力維持\n✅ 平衡訓練\n"
-        detail += "✅ 關節活動\n✅ 心肺功能\n\n"
-        detail += "【安全原則】\n"
-        detail += "• 動作和緩\n• 旁邊有扶手\n"
-        detail += "• 穿防滑鞋\n• 有人陪伴\n\n"
-        detail += f"【教學影片】\n🎥 {videos['3']}\n\n"
-        detail += "【訓練建議】\n"
-        detail += "• 頻率:每天練習\n• 時間:15-20分鐘\n"
-        detail += "• 強度:輕鬆不費力\n\n"
-        detail += "⚠️ 不適立即停止,頭暈胸悶請就醫"
-    
-    detail += "\n\n💬 輸入「返回」回到選單"
-    return detail
-
+# ==================== 功能選單 ====================
 def show_main_menu():
+    """主選單"""
     menu = "👋 歡迎使用健康數據管家!\n\n"
     menu += "請選擇功能:\n\n"
-    menu += "1️⃣ 健康檢測\n   分析身體數值+飲食建議\n\n"
-    menu += "2️⃣ 運動計畫\n   個人化運動+影片教學\n\n"
-    menu += "3️⃣ 飲食計畫\n   超商組合+外食建議\n\n"
+    menu += "1️⃣ 健康檢測\n"
+    menu += "   分析身體數值+飲食建議\n\n"
+    menu += "2️⃣ 運動計畫\n"
+    menu += "   個人化運動+影片教學\n\n"
+    menu += "3️⃣ 飲食計畫\n"
+    menu += "   超商組合+外食建議\n\n"
     menu += "請輸入數字 1-3"
     return menu
 
 def show_exercise_menu(user_data=None):
+    """運動選單"""
     menu = "💪 運動計畫\n\n"
-    if user_data and 'bmi' in user_data:
-        rec = get_exercise_recommendation(user_data['bmi'], user_data.get('age', 30))
-        menu += f"📊 根據你的數據:\n"
-        menu += f"BMI: {user_data['bmi']} ({get_bmi_category(user_data['bmi'])})\n\n"
-        menu += f"🎯 AI推薦: {rec['reason']}\n\n"
+    
+    if user_data and 'bmi' in user_data and 'age' in user_data:
+        rec = recommend_exercise(user_data['bmi'], user_data['age'])
+        menu += f"🎯 AI推薦: {rec['type']}\n"
+        menu += f"   {rec['reason']}\n\n"
+    
     menu += "請選擇運動類型:\n"
-    menu += "1️⃣ 上肢訓練\n2️⃣ 下肢訓練\n3️⃣ 長者居家運動\n\n"
+    menu += "1️⃣ 上肢訓練\n"
+    menu += "2️⃣ 下肢訓練\n"
+    menu += "3️⃣ 長者居家運動\n\n"
     menu += "請輸入數字 1-3\n\n"
     menu += "💬 輸入「返回」回到選單"
     return menu
 
+def get_diet_plan(bmi):
+    """飲食計畫"""
+    plan = "🍽️ 個人化飲食計畫\n\n"
+    
+    if bmi < 18.5:
+        plan += "📊 您的體重偏輕\n"
+        plan += "建議:增加熱量攝取\n\n"
+        plan += "🌅 早:豆漿+三明治+香蕉\n"
+        plan += "🌞 午:便當+雞腿+多吃飯\n"
+        plan += "🌙 晚:牛排+義大利麵\n"
+    elif 18.5 <= bmi < 24:
+        plan += "✅ 您的體重正常\n"
+        plan += "建議:維持均衡飲食\n\n"
+        plan += "🌅 早:燕麥+水果+堅果\n"
+        plan += "🌞 午:糙米飯+雞胸肉+青菜\n"
+        plan += "🌙 晚:魚肉+地瓜+沙拉\n"
+    elif 24 <= bmi < 27:
+        plan += "⚠️ 您的體重偏重\n"
+        plan += "建議:控制熱量攝取\n\n"
+        plan += "🌅 早:無糖豆漿+茶葉蛋\n"
+        plan += "🌞 午:半碗飯+瘦肉+2碗菜\n"
+        plan += "🌙 晚:蒸魚+燙青菜(少澱粉)\n"
+    else:  # BMI >= 27
+        plan += "🔴 建議諮詢營養師\n"
+        plan += "建議:積極控制飲食\n\n"
+        plan += "🌅 早:無糖豆漿+地瓜\n"
+        plan += "🌞 午:少量飯+瘦肉+3碗菜\n"
+        plan += "🌙 晚:蒸魚+燙青菜3碗(不吃澱粉)\n"
+    
+    plan += "\n⚠️ 請諮詢醫師或營養師\n"
+    plan += "\n💬 輸入「返回」回到選單"
+    return plan
+
+def get_exercise_detail(exercise_type):
+    """運動詳細說明"""
+    details = {
+        '1': {
+            'title': '上肢訓練',
+            'content': (
+                "💪 上肢訓練計畫\n\n"
+                "🎯 目標:強化手臂、肩膀、胸部\n\n"
+                "📋 訓練動作:\n"
+                "• 伏地挺身 10次 x 3組\n"
+                "• 啞鈴彎舉 12次 x 3組\n"
+                "• 肩推 10次 x 3組\n\n"
+                "⏱️ 組間休息:60秒\n"
+                "📅 建議頻率:每週3次\n"
+                "• 強度:適中,可感受肌肉收縮\n\n"
+                "⚠️ 不適立即停止,疼痛請就醫"
+            )
+        },
+        '2': {
+            'title': '下肢訓練',
+            'content': (
+                "🦵 下肢訓練計畫\n\n"
+                "🎯 目標:強化大腿、臀部、小腿\n\n"
+                "📋 訓練動作:\n"
+                "• 深蹲 15次 x 3組\n"
+                "• 弓箭步 12次 x 3組(每腿)\n"
+                "• 橋式 15次 x 3組\n\n"
+                "⏱️ 組間休息:60秒\n"
+                "📅 建議頻率:每週3次\n"
+                "• 強度:適中,膝蓋不超過腳尖\n\n"
+                "⚠️ 不適立即停止,膝痛請就醫"
+            )
+        },
+        '3': {
+            'title': '長者居家運動',
+            'content': (
+                "🧓 長者居家運動\n\n"
+                "🎯 目標:維持活動力、預防跌倒\n\n"
+                "📋 訓練動作:\n"
+                "• 坐姿抬腿 10次 x 2組\n"
+                "• 手臂畫圈 10次 x 2組\n"
+                "• 站姿側抬腿 8次 x 2組(扶椅)\n\n"
+                "⏱️ 組間休息:90秒\n"
+                "📅 建議頻率:每天輕鬆做\n"
+                "• 強度:輕鬆不費力\n\n"
+                "⚠️ 不適立即停止,頭暈胸悶請就醫"
+            )
+        }
+    }
+    
+    detail = details.get(exercise_type, {}).get('content', "找不到該運動計畫")
+    detail += "\n\n💬 輸入「返回」回到選單"
+    return detail
+
+# ==================== Webhook 處理 ====================
 @app.route("/webhook", methods=['POST'])
-def callback():
+def webhook():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
+    
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
+    
     return 'OK'
 
 @handler.add(MessageEvent, message=TextMessage)
@@ -207,19 +204,24 @@ def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text.strip()
     
+    # 初始化用戶狀態
     if user_id not in user_states:
         user_states[user_id] = {'mode': 'menu'}
     
     state = user_states[user_id]
     
-    # 選單指令(新增返回功能)
+    # ✅ 選單指令(修正版:保留 health_data)
     if user_message in ['選單', '功能', 'menu', '開始', 'start', '返回', 'back', '重新選擇']:
+        # 保留舊的 health_data
+        old_data = user_states.get(user_id, {}).get('health_data')
         user_states[user_id] = {'mode': 'menu'}
+        if old_data:  # 如果之前有健康數據,保留它
+            user_states[user_id]['health_data'] = old_data
         reply = show_main_menu()
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
     
-    # 主選單
+    # 主選單處理
     if state['mode'] == 'menu':
         if user_message == '1':
             user_states[user_id] = {'mode': 'health', 'step': 1}
@@ -276,52 +278,57 @@ def handle_message(event):
         elif state.get('step') == 4:
             if user_message in ['男', '女']:
                 bmi = calculate_bmi(state['height'], state['weight'])
-                bmr = calculate_bmr(state['weight'], state['height']*100, state['age'], user_message)
                 
-                state['health_data'] = {
-                    'bmi': bmi,
-                    'bmr': bmr,
-                    'age': state['age']
-                }
-                
+                if user_message == '男':
+                    bmr = calculate_bmr_male(state['weight'], state['height']*100, state['age'])
+                else:
+                    bmr = calculate_bmr_female(state['weight'], state['height']*100, state['age'])
+
                 category = get_bmi_category(bmi)
                 reply = f"📊 健康分析結果\n\n"
                 reply += f"身高: {state['height_cm']:.0f}cm\n"
                 reply += f"體重: {state['weight']}kg\n"
                 reply += f"BMI: {bmi} ({category})\n"
                 reply += f"基礎代謝率: {bmr}大卡/天\n\n"
-                reply += "✅ 分析完成!\n\n"
-                reply += "💬 輸入「選單」查看:\n"
+                reply += f"✅ 分析完成!\n\n"
+                reply += f"💬 輸入「選單」查看:\n"
                 reply += "• 運動計畫(AI推薦)\n"
-                reply += "• 飲食計畫(個人化)"
-                
-                user_states[user_id]['mode'] = 'menu'
+                reply += "• 飲食計畫(個人化)\n"
+
+                # ✅ 完整保存所有健康數據
+                user_states[user_id] = {
+                    'mode': 'menu',
+                    'health_data': {
+                        'bmi': bmi,
+                        'bmr': bmr,
+                        'age': state['age'],
+                        'gender': state['gender'],
+                        'height': state['height'],
+                        'height_cm': state['height_cm'],
+                        'weight': state['weight']
+                    }
+                }
             else:
                 reply = "⚠️ 請輸入: 男 或 女\n\n💬 輸入「返回」可重新選擇"
         else:
             reply = show_main_menu()
-        
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
     
-    # 運動計畫
+    # 運動選單處理
     if state['mode'] == 'exercise':
         if user_message in ['1', '2', '3']:
             reply = get_exercise_detail(user_message)
-            user_states[user_id]['mode'] = 'menu'
         else:
             reply = show_exercise_menu(state.get('health_data'))
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
     
-    # 預設
-    reply = show_main_menu()
+    # 預設回應
+    reply = "❓ 無法識別指令\n\n請輸入「選單」查看功能"
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
-@app.route("/")
-def home():
-    return "健康數據管家 LINE Bot is running!"
-
+# ==================== 啟動服務 ====================
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
