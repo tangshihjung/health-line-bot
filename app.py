@@ -277,6 +277,9 @@ def handle_message(event):
                 reply = "⚠️ 請輸入有效數字\n\n💬 輸入「返回」可重新選擇"
         elif state.get('step') == 4:
             if user_message in ['男', '女']:
+                # ✅ 先保存性別到 state
+                state['gender'] = user_message
+                
                 bmi = calculate_bmi(state['height'], state['weight'])
                 
                 if user_message == '男':
